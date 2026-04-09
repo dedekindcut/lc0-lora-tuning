@@ -616,23 +616,46 @@ class LC0Net(nn.Module):
 
         return p, v
 
-    def apply_lora(self, rank=4, alpha=8):
+    def apply_lora(
+        self,
+        rank=4,
+        alpha=8,
+        last_n_blocks=2,
+        target_modules=None,
+        include_heads=False,
+    ):
+        if target_modules is None:
+            target_modules = {"q_proj", "v_proj", "out_proj"}
+        else:
+            target_modules = set(target_modules)
+
         def replace_linear_or_conv(module):
             if isinstance(module, (nn.Linear, nn.Conv2d)):
                 return LoRALayer(module, rank, alpha)
             return module
 
         if self.is_transformer:
-            for blk in self.blocks:
+            if last_n_blocks is None or last_n_blocks <= 0:
+                selected_blocks = self.blocks
+            else:
+                selected_blocks = self.blocks[-last_n_blocks:]
+
+            for blk in selected_blocks:
                 # MHA Projections
-                blk.mha.q_proj = replace_linear_or_conv(blk.mha.q_proj)
-                blk.mha.k_proj = replace_linear_or_conv(blk.mha.k_proj)
-                blk.mha.v_proj = replace_linear_or_conv(blk.mha.v_proj)
-                blk.mha.out_proj = replace_linear_or_conv(blk.mha.out_proj)
+                if "q_proj" in target_modules:
+                    blk.mha.q_proj = replace_linear_or_conv(blk.mha.q_proj)
+                if "k_proj" in target_modules:
+                    blk.mha.k_proj = replace_linear_or_conv(blk.mha.k_proj)
+                if "v_proj" in target_modules:
+                    blk.mha.v_proj = replace_linear_or_conv(blk.mha.v_proj)
+                if "out_proj" in target_modules:
+                    blk.mha.out_proj = replace_linear_or_conv(blk.mha.out_proj)
 
                 # FFN Projections
-                blk.ffn.fc1 = replace_linear_or_conv(blk.ffn.fc1)
-                blk.ffn.fc2 = replace_linear_or_conv(blk.ffn.fc2)
+                if "ffn_fc1" in target_modules:
+                    blk.ffn.fc1 = replace_linear_or_conv(blk.ffn.fc1)
+                if "ffn_fc2" in target_modules:
+                    blk.ffn.fc2 = replace_linear_or_conv(blk.ffn.fc2)
         else:
             # Apply to residual blocks (Conv1 and Conv2)
             for blk in self.blocks:
@@ -641,17 +664,20 @@ class LC0Net(nn.Module):
                 if isinstance(blk.conv2.conv, nn.Conv2d):
                     blk.conv2.conv = replace_linear_or_conv(blk.conv2.conv)
 
-        # Apply to Heads
-        if hasattr(self, "policy_conv") and isinstance(
-            self.policy_conv.conv, nn.Conv2d
-        ):
-            self.policy_conv.conv = replace_linear_or_conv(self.policy_conv.conv)
+        # Heads are off by default to preserve ordinary chess competence.
+        if include_heads:
+            if hasattr(self, "policy_conv") and isinstance(
+                self.policy_conv.conv, nn.Conv2d
+            ):
+                self.policy_conv.conv = replace_linear_or_conv(self.policy_conv.conv)
 
-        if hasattr(self, "pol_fc") and isinstance(self.pol_fc, nn.Linear):
-            self.pol_fc = replace_linear_or_conv(self.pol_fc)
+            if hasattr(self, "pol_fc") and isinstance(self.pol_fc, nn.Linear):
+                self.pol_fc = replace_linear_or_conv(self.pol_fc)
 
-        if hasattr(self, "value_conv") and isinstance(self.value_conv.conv, nn.Conv2d):
-            self.value_conv.conv = replace_linear_or_conv(self.value_conv.conv)
+            if hasattr(self, "value_conv") and isinstance(
+                self.value_conv.conv, nn.Conv2d
+            ):
+                self.value_conv.conv = replace_linear_or_conv(self.value_conv.conv)
 
     def save_proto(self, filename):
         """Bakes weights and saves to protobuf file."""

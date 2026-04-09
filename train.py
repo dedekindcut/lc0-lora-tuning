@@ -13,6 +13,24 @@ import loader
 import model
 
 
+def parse_target_modules(raw):
+    aliases = {
+        "q": "q_proj",
+        "k": "k_proj",
+        "v": "v_proj",
+        "out": "out_proj",
+        "ffn1": "ffn_fc1",
+        "ffn2": "ffn_fc2",
+    }
+    modules = []
+    for item in raw.split(","):
+        token = item.strip()
+        if not token:
+            continue
+        modules.append(aliases.get(token, token))
+    return modules
+
+
 def train(args):
     # 1. Load Base Network
     print(f"Loading network from {args.network}...")
@@ -28,8 +46,19 @@ def train(args):
     lc0_net.to(device)
 
     # 2. Apply LoRA
-    print(f"Applying LoRA (rank={args.rank}, alpha={args.alpha})...")
-    lc0_net.apply_lora(rank=args.rank, alpha=args.alpha)
+    target_modules = parse_target_modules(args.target_modules)
+    print(
+        "Applying LoRA "
+        f"(rank={args.rank}, alpha={args.alpha}, last_n_blocks={args.last_n_blocks}, "
+        f"target_modules={target_modules}, include_heads={args.include_heads})..."
+    )
+    lc0_net.apply_lora(
+        rank=args.rank,
+        alpha=args.alpha,
+        last_n_blocks=args.last_n_blocks,
+        target_modules=target_modules,
+        include_heads=args.include_heads,
+    )
     lc0_net.to(device)  # Ensure new params are on device
 
     # Verify only LoRA params are trainable
@@ -141,6 +170,22 @@ if __name__ == "__main__":
     parser.add_argument("--output", required=True, help="Path to save output .pb.gz")
     parser.add_argument("--rank", type=int, default=4, help="LoRA rank")
     parser.add_argument("--alpha", type=float, default=8, help="LoRA alpha")
+    parser.add_argument(
+        "--last_n_blocks",
+        type=int,
+        default=2,
+        help="Apply LoRA only to the last N transformer blocks; <=0 means all",
+    )
+    parser.add_argument(
+        "--target_modules",
+        default="q,v,out",
+        help="Comma-separated modules: q,k,v,out,ffn1,ffn2",
+    )
+    parser.add_argument(
+        "--include_heads",
+        action="store_true",
+        help="Also apply LoRA to policy/value heads",
+    )
     parser.add_argument("--lr", type=float, default=1e-4, help="Learning rate")
     parser.add_argument("--steps", type=int, default=1000, help="Training steps")
     parser.add_argument("--batch_size", type=int, default=256, help="Batch size")
