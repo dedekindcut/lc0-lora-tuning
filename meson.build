@@ -22,8 +22,12 @@ add_global_arguments('-Wno-maybe-uninitialized', language : 'cpp')
 # External dependencies
 zlib_dep = dependency('zlib')
 
-# Python and PyBind11 dependencies for Python extension
-python3 = import('python').find_installation()
+# Python and PyBind11 dependencies for Python extension.
+# Pin to the trainer venv so the built extension matches the interpreter
+# used for training instead of whichever system python Meson finds first.
+python3 = import('python').find_installation(
+  join_paths(meson.current_source_dir(), '.venv', 'bin', 'python')
+)
 pybind11_dep = dependency('pybind11')
 
 # Abseil dependencies always resolved from the wrap subproject.

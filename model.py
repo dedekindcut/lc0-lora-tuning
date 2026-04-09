@@ -51,6 +51,8 @@ class LoRALayer(nn.Module):
 
             # Freeze original
             original_layer.weight.requires_grad = False
+            if original_layer.bias is not None:
+                original_layer.bias.requires_grad = False
             self.original_layer = original_layer
 
             # Init
@@ -66,6 +68,8 @@ class LoRALayer(nn.Module):
             self.lora_B = nn.Parameter(torch.zeros(self.out_features, rank))
 
             original_layer.weight.requires_grad = False
+            if original_layer.bias is not None:
+                original_layer.bias.requires_grad = False
             self.original_layer = original_layer
 
             nn.init.kaiming_uniform_(self.lora_A, a=5**0.5)
@@ -624,6 +628,9 @@ class LC0Net(nn.Module):
         target_modules=None,
         include_heads=False,
     ):
+        for param in self.parameters():
+            param.requires_grad = False
+
         if target_modules is None:
             target_modules = {"q_proj", "v_proj", "out_proj"}
         else:
