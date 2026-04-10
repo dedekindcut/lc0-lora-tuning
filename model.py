@@ -736,6 +736,17 @@ class LC0Net(nn.Module):
             new_layer = loader.encode_layer(torch_tensor.cpu().detach().numpy())
             proto_layer.CopyFrom(new_layer)
 
+        def sanitize_head_map(repeated_field):
+            valid = []
+            for item in repeated_field:
+                if getattr(item, "key", "") and item.HasField("value"):
+                    valid.append((item.key, item.value))
+            del repeated_field[:]
+            for key, value in valid:
+                new_item = repeated_field.add()
+                new_item.key = key
+                new_item.value.CopyFrom(value)
+
         def update_conv_block(proto_block, module):
             # Weights
             if hasattr(module, "conv"):
@@ -844,6 +855,11 @@ class LC0Net(nn.Module):
         if hasattr(self, "pol_fc") and self.proto_net.format.network_format.policy == 2:
             print("Updating policy format from CONVOLUTION to CLASSICAL...")
             self.proto_net.format.network_format.policy = 1  # POLICY_CLASSICAL
+
+        if w.HasField("policy_heads"):
+            sanitize_head_map(w.policy_heads.policy_head_map)
+        if w.HasField("value_heads"):
+            sanitize_head_map(w.value_heads.value_head_map)
 
         # Gzip it
         import gzip
