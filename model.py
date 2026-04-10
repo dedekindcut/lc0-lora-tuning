@@ -26,11 +26,11 @@ RPE_MAP = torch.from_numpy(make_rpe_map()).float()
 
 
 class LoRALayer(nn.Module):
-    def __init__(self, original_layer, rank=4, alpha=8):
+    def __init__(self, original_layer, rank=4, alpha=8, use_rslora=False):
         super().__init__()
         self.rank = rank
         self.alpha = alpha
-        self.scaling = alpha / rank
+        self.scaling = alpha / (math.sqrt(rank) if use_rslora else rank)
 
         if isinstance(original_layer, nn.Conv2d):
             self.is_conv = True
@@ -667,6 +667,7 @@ class LC0Net(nn.Module):
         last_n_blocks=2,
         target_modules=None,
         include_heads=False,
+        use_rslora=False,
     ):
         for param in self.parameters():
             param.requires_grad = False
@@ -678,7 +679,7 @@ class LC0Net(nn.Module):
 
         def replace_linear_or_conv(module):
             if isinstance(module, (nn.Linear, nn.Conv2d)):
-                return LoRALayer(module, rank, alpha)
+                return LoRALayer(module, rank, alpha, use_rslora=use_rslora)
             return module
 
         if self.is_transformer:
