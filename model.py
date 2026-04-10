@@ -560,6 +560,37 @@ class LC0Net(nn.Module):
                     torch.from_numpy(w2).view(out_dim, in_dim)
                 )
                 self.val_fc2.bias.data.copy_(torch.from_numpy(b2))
+        elif self.is_transformer and w.HasField("value_heads"):
+            head = w.value_heads.winner
+            if head.HasField("ip_val_w") and head.HasField("ip_val_b"):
+                wv = loader.decode_layer(head.ip_val_w)
+                bv = loader.decode_layer(head.ip_val_b)
+                out_dim = bv.size
+                in_dim = wv.size // out_dim
+
+                self.value_ip = nn.Linear(in_dim, out_dim)
+                self.value_ip.weight.data.copy_(torch.from_numpy(wv).view(out_dim, in_dim))
+                self.value_ip.bias.data.copy_(torch.from_numpy(bv))
+
+                if head.HasField("ip1_val_w"):
+                    w1 = loader.decode_layer(head.ip1_val_w)
+                    b1 = loader.decode_layer(head.ip1_val_b)
+                    out_dim = b1.size
+                    in_dim = w1.size // out_dim
+
+                    self.val_fc1 = nn.Linear(in_dim, out_dim)
+                    self.val_fc1.weight.data.copy_(torch.from_numpy(w1).view(out_dim, in_dim))
+                    self.val_fc1.bias.data.copy_(torch.from_numpy(b1))
+
+                if head.HasField("ip2_val_w"):
+                    w2 = loader.decode_layer(head.ip2_val_w)
+                    b2 = loader.decode_layer(head.ip2_val_b)
+                    out_dim = b2.size
+                    in_dim = w2.size // out_dim
+
+                    self.val_fc2 = nn.Linear(in_dim, out_dim)
+                    self.val_fc2.weight.data.copy_(torch.from_numpy(w2).view(out_dim, in_dim))
+                    self.val_fc2.bias.data.copy_(torch.from_numpy(b2))
 
     def forward(self, x):
         if not self.is_transformer:
@@ -615,6 +646,15 @@ class LC0Net(nn.Module):
             # Activation depends on output dim
             # 1 -> Tanh (Classical Q)
             # 3 -> logits (WDL)
+            if v.shape[1] == 1:
+                v = torch.tanh(v)
+        elif hasattr(self, "value_ip"):
+            v = self.value_ip(x)
+            v = v.flatten(1)
+            if hasattr(self, "val_fc1"):
+                v = F.relu(self.val_fc1(v))
+            if hasattr(self, "val_fc2"):
+                v = self.val_fc2(v)
             if v.shape[1] == 1:
                 v = torch.tanh(v)
 
